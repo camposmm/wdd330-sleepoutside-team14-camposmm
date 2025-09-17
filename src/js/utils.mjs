@@ -30,13 +30,8 @@ export function getParam(param) {
 }
 
 /**
- * renderListWithTemplate(templateFn, parentElement, list, position = "afterbegin", clear = false)
- * Reusable renderer for mapping a list of data items to a single HTML template function.
- * - templateFn: (item) => string
- * - parentElement: Element to insert into
- * - list: array of items
- * - position: insertAdjacentHTML position (default "afterbegin")
- * - clear: if true, empties parentElement before inserting
+ * Render a list of items with a template function.
+ * This is used for product lists (Week 02).
  */
 export function renderListWithTemplate(
   templateFn,
@@ -49,4 +44,41 @@ export function renderListWithTemplate(
   if (clear) parentElement.innerHTML = "";
   const htmlStrings = (list ?? []).map((item) => templateFn(item));
   parentElement.insertAdjacentHTML(position, htmlStrings.join(""));
+}
+
+/**
+ * Render a single HTML template string into a parent element.
+ * Optionally run a callback after rendering.
+ * This is used for header/footer partials (Week 03).
+ */
+export function renderWithTemplate(template, parentElement, data, callback) {
+  const fragment = document.createRange().createContextualFragment(template);
+  parentElement.replaceChildren(fragment);
+  if (callback) callback(data);
+}
+
+/**
+ * Fetch an HTML partial and return its text.
+ * Use absolute paths like "/partials/header.html" so it works from any page.
+ */
+export async function loadTemplate(path) {
+  const res = await fetch(path);
+  if (!res.ok) throw new Error(`Failed to load template: ${path}`);
+  return await res.text();
+}
+
+/**
+ * Load header and footer partials and render them into #main-header and #main-footer.
+ */
+export async function loadHeaderFooter() {
+  const [headerTemplate, footerTemplate] = await Promise.all([
+    loadTemplate("/partials/header.html"),
+    loadTemplate("/partials/footer.html"),
+  ]);
+
+  const headerElement = document.querySelector("#main-header");
+  const footerElement = document.querySelector("#main-footer");
+
+  if (headerElement) renderWithTemplate(headerTemplate, headerElement);
+  if (footerElement) renderWithTemplate(footerTemplate, footerElement);
 }
