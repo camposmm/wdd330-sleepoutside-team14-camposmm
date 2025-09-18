@@ -1,3 +1,14 @@
+/* src/css/style.css
+   -------------------------------------------------------
+   Global styles for Sleep Outside. This includes:
+   - CSS variables, base typography
+   - Header, hero, utility classes
+   - Product list cards
+   - Product detail styles
+   - Cart styles
+   - UPDATED: Category grid image constraints to avoid giant SVGs
+   ------------------------------------------------------- */
+
 :root {
   --font-body: Arial, Helvetica, sans-serif;
   --font-headline: Haettenschweiler, "Arial Narrow Bold", sans-serif;
@@ -116,7 +127,7 @@ button {
 
 /* End utility classes */
 
-/* Cart icon styles */
+/* Cart icon styles in header */
 .cart {
   padding-top: 1em;
   position: relative;
@@ -150,30 +161,48 @@ button {
   text-align: center;
 }
 
+/* Product sections */
 .products {
   margin-top: 2rem;
   padding: 1rem;
 }
 
+/* -------------------------------------------------------
+   PRODUCT LIST GRID (used for both category tiles and products)
+   ------------------------------------------------------- */
 .product-list {
   display: flex;
   flex-flow: row wrap;
   list-style-type: none;
   justify-content: center;
+  gap: 1rem; /* spacing between tiles */
+  padding: 0;
+  margin: 0;
 }
 
 .product-list a {
   text-decoration: none;
   color: var(--dark-grey);
+  display: block;
 }
 
 /* Styles for product lists */
 .product-card {
-  flex: 1 1 45%;
+  flex: 1 1 220px;          /* responsive tiles */
   margin: 0.25em;
   padding: 0.5em;
   border: 1px solid var(--light-grey);
   max-width: 250px;
+  text-align: center;
+}
+
+/* Constrain tile images (prevents huge SVGs) */
+.product-card img {
+  width: 140px;             /* adjust as desired */
+  height: 140px;
+  display: block;
+  margin: 0.5rem auto;
+  object-fit: contain;
 }
 
 .product-card h2,
@@ -189,8 +218,8 @@ button {
 .card__name {
   font-size: 1em;
 }
-/* End product list card */
 
+/* Product detail page */
 .product-detail {
   padding: 1em;
   max-width: 500px;
@@ -201,18 +230,9 @@ button {
   width: 100%;
 }
 
-/* =========================
-   Cart styles (updated)
-   ========================= */
-
-/* remove bullets and default padding on the list */
-.cart-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-/* card wrapper */
+/* -------------------------------------------------------
+   CART styles (kept and compatible with your JS)
+   ------------------------------------------------------- */
 .cart-card {
   display: grid;
   grid-template-columns: 150px 1fr; /* image | info */
@@ -223,7 +243,6 @@ button {
   font-size: var(--small-font);
 }
 
-/* image column */
 .cart-card__image {
   grid-column: 1;
 }
@@ -234,7 +253,6 @@ button {
   display: block;
 }
 
-/* content column */
 .cart-card__content {
   grid-column: 2;
 }
@@ -254,7 +272,6 @@ button {
   margin: 0.25rem 0;
 }
 
-/* qty button row */
 .cart-item__qty {
   display: flex;
   gap: 0.5rem;
@@ -268,14 +285,13 @@ button {
   display: inline-block;
 }
 
-/* total summary below list */
 .cart-summary {
   margin-top: 1rem;
   border-top: 2px solid var(--primary-color);
   padding-top: 0.75rem;
 }
 
-/* previous grid variant kept for responsiveness */
+/* Wide view */
 @media screen and (min-width: 500px) {
   body {
     max-width: 1080px;
