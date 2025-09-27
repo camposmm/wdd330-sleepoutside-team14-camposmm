@@ -1,152 +1,187 @@
 // src/js/product.js
 // ------------------------------------------------------
-// Product detail page logic (W03 API version)
-// - reads ?product=<id>
-// - fetches product by ID from API via ProductData
-// - displays brand, name, price, description, image
-// - WIRES UP "Add to Cart" button to store a normalized item in localStorage ("so-cart")
-//   compatible with your cart.js rendering (Price, Image, Brand, Name, Id, quantity)
+// Product Detail page (robust for dev & preview builds)
+// - Fetch product by ?product=ID
+// - Render details
+// - Add to Cart via event delegation
+// - Defensive localStorage (with fallback) + verbose logging
 // ------------------------------------------------------
 
-import { getParam, qs, getLocalStorage, setLocalStorage } from "./utils.mjs";
+import {
+  loadHeaderFooter,
+  qs,
+  getParam,
+  getLocalStorage,
+  setLocalStorage,
+} from "./utils.mjs";
 import ProductData from "./ProductData.mjs";
 
-/** Normalize API image URLs: convert //example.com/... to https://example.com/... */
-function normalizeImageUrl(url) {
-  if (!url) return "";
-  if (url.startsWith("//")) return "https:" + url;
-  return url;
+const CART_KEY = "so-cart";
+let currentProduct = null;
+
+// ---------- storage helpers (robust) -----------------------------------------
+
+function safeGetCart() {
+  try {
+    return getLocalStorage(CART_KEY) ?? [];
+  } catch (e) {
+    console.warn("[product] localStorage read failed, using memory fallback.", e);
+    window.__cart_fallback__ = window.__cart_fallback__ || [];
+    return window.__cart_fallback__;
+  }
 }
 
-/** Normalize brand string */
-function getBrand(product) {
-  return typeof product?.Brand === "string"
-    ? product.Brand
-    : product?.Brand?.Name ?? "";
+function safeSetCart(cart) {
+  try {
+    setLocalStorage(CART_KEY, cart);
+  } catch (e) {
+    console.warn("[product] localStorage write failed, using memory fallback.", e);
+    window.__cart_fallback__ = cart;
+  }
 }
 
-/** Prefer Name with fallback */
-function getName(product) {
-  return product?.Name ?? product?.NameWithoutBrand ?? "";
+// ---------- product helpers --------------------------------------------------
+
+function normalizeImagePath(p = "") {
+  return p.replace(/^(\.\.\/)+/, "/");
 }
 
-/** Choose the best price */
+function getPrimaryImage(product) {
+  return (
+    product?.Images?.PrimaryLarge ||
+    product?.Images?.PrimaryMedium ||
+    product?.PrimaryLarge ||
+    product?.PrimaryMedium ||
+    product?.Image ||
+    "/images/noun_Tent_2517.svg"
+  );
+}
+
 function getPrice(product) {
-  const n =
-    product?.FinalPrice ??
-    product?.ListPrice ??
-    product?.SuggestedRetailPrice ??
-    0;
-  return Number(n).toFixed(2);
+  const n = product?.Price ?? product?.FinalPrice ?? product?.ListPrice ?? 0;
+  const asNum = Number(n);
+  return Number.isFinite(asNum) ? asNum : 0;
 }
 
-/** Prefer a large image for the details page; broaden fallbacks; normalize URL */
-function getLargeImage(product) {
-  const raw =
-    product?.Images?.PrimaryLarge ??
-    product?.Images?.PrimaryMedium ??
-    product?.Images?.PrimarySmall ??
-    product?.Image ??
-    "";
-  const normalized = normalizeImageUrl(raw);
-  return normalized || "/images/noun_Tent_2517.svg";
+// ---------- render -----------------------------------------------------------
+
+function ensureDetailContainer() {
+  let el = qs(".product-detail");
+  if (!el) {
+    const main = qs("main") || document.body;
+    el = document.createElement("section");
+    el.className = "product-detail";
+    main.appendChild(el);
+  }
+  return el;
 }
 
-/** Prefer a small/medium image for cart thumbnails; normalize URL */
-function getCartImage(product) {
-  const raw =
-    product?.Images?.PrimarySmall ??
-    product?.Images?.PrimaryMedium ??
-    product?.Images?.PrimaryLarge ??
-    product?.Image ??
-    "";
-  const normalized = normalizeImageUrl(raw);
-  return normalized || "/images/noun_Tent_2517.svg";
+function renderProductDetail(product) {
+  const el = ensureDetailContainer();
+  const price = getPrice(product).toFixed(2);
+  const img = normalizeImagePath(getPrimaryImage(product));
+  const brand = product.Brand ?? "";
+  const name = product.Name ?? product.name ?? "";
+
+  el.innerHTML = `
+    <img src="${img}" alt="${name}"
+         onerror="this.onerror=null;this.src='/images/noun_Tent_2517.svg';this.style.objectFit='contain';" />
+    <p class="divider"></p>
+    <h2>${brand}</h2>
+    <h1>${name}</h1>
+    <p class="product-card__price">$${price}</p>
+    <p class="product__description">${product.Description ?? product.description ?? ""}</p>
+    <button id="addToCart" data-action="add-to-cart" type="button">Add to Cart</button>
+  `;
+  console.log("[product] detail rendered.");
 }
 
-/**
- * Add the product to localStorage in the format your cart expects.
- * - Key: "so-cart"
- * - If the item already exists (same Id), increment quantity
- * - Otherwise push a new normalized object
- */
+// ---------- cart logic -------------------------------------------------------
+
 function addToCart(product) {
-  // Read current cart or start empty
-  const cart = getLocalStorage("so-cart") ?? [];
+  const cart = safeGetCart();
+  const id = String(product.Id ?? product.id ?? "");
+  const idx = cart.findIndex((p) => String(p.Id ?? p.id ?? "") === id);
 
-  // Normalize what we save so cart.js can render it nicely
-  const normalized = {
-    Id: product?.Id,
-    Brand: getBrand(product),
-    Name: getName(product),
-    Price: Number(getPrice(product)), // store as number
-    Image: getCartImage(product),
-    quantity: 1,
-  };
-
-  // See if item exists already
-  const index = cart.findIndex((i) => String(i.Id) === String(normalized.Id));
-  if (index > -1) {
-    cart[index].quantity = (cart[index].quantity ?? 1) + 1;
+  if (idx > -1) {
+    cart[idx].quantity = (cart[idx].quantity ?? 1) + 1;
   } else {
-    cart.push(normalized);
+    cart.push({
+      Id: product.Id ?? product.id,
+      Brand: product.Brand ?? "",
+      Name: product.Name ?? product.name ?? "Product",
+      Price: getPrice(product),
+      Image: getPrimaryImage(product),
+      quantity: 1,
+    });
   }
+  safeSetCart(cart);
+  return cart;
+}
 
-  // Persist
-  setLocalStorage("so-cart", cart);
+// ---------- event delegation (always works in preview) -----------------------
 
-  // Optional: tiny UX feedback
-  const btn = qs("#addToCart");
-  if (btn) {
+function attachGlobalClickHandler() {
+  document.addEventListener("click", (e) => {
+    const btn = e.target.closest('[data-action="add-to-cart"], #addToCart');
+    if (!btn) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (!currentProduct) {
+      console.warn("[product] add-to-cart clicked but product not loaded yet.");
+      return;
+    }
+
+    const cart = addToCart(currentProduct);
+
+    // Visual feedback
     const original = btn.textContent;
+    btn.disabled = true;
     btn.textContent = "Added!";
-    setTimeout(() => (btn.textContent = original), 800);
-  }
+    setTimeout(() => {
+      btn.textContent = original;
+      btn.disabled = false;
+    }, 600);
+
+    console.log("[product] added to cart:", { id: currentProduct.Id, cart });
+  });
 }
 
-async function renderProduct() {
+// ---------- boot -------------------------------------------------------------
+
+async function init() {
+  try {
+    loadHeaderFooter();
+  } catch (e) {
+    console.warn("[product] header/footer load failed:", e);
+  }
+
   const id = getParam("product");
-  if (!id) return;
-
-  const ds = new ProductData();
-  const product = await ds.findProductById(id);
-  if (!product) return;
-
-  // Extract values
-  const brand = getBrand(product);
-  const name = getName(product);
-  const price = getPrice(product);
-
-  // Populate image with fallback
-  const imgEl = qs(".product__image");
-  if (imgEl) {
-    imgEl.src = getLargeImage(product);
-    imgEl.alt = `Product image`;
-    imgEl.onerror = () => {
-      imgEl.onerror = null;
-      imgEl.src = "/images/noun_Tent_2517.svg";
-      imgEl.style.objectFit = "contain";
-    };
+  if (!id) {
+    console.warn("[product] Missing ?product=ID in URL.");
+    ensureDetailContainer().insertAdjacentHTML(
+      "beforeend",
+      `<p style="color:#a00;margin-top:.5rem">No product id supplied.</p>`
+    );
+    return;
   }
 
-  // Populate text fields
-  const brandEl = qs(".product__brand");
-  const nameEl = qs(".product__name");
-  const priceEl = qs(".product__price");
-  const descEl = qs(".product__desc");
+  console.log("[product] loading product:", id);
 
-  if (brandEl) brandEl.textContent = brand;
-  if (nameEl) nameEl.textContent = name;
-  if (priceEl) priceEl.textContent = `$${price}`;
-  // API includes HTML-safe description here:
-  if (descEl) descEl.innerHTML = product.DescriptionHtmlSimple ?? "";
-
-  // Wire up Add to Cart
-  const addBtn = qs("#addToCart");
-  if (addBtn) {
-    addBtn.addEventListener("click", () => addToCart(product));
+  try {
+    const dataSource = new ProductData();
+    currentProduct = await dataSource.findProductById(id);
+    if (!currentProduct) throw new Error("Product not found");
+    console.log("[product] loaded:", currentProduct.Id);
+    renderProductDetail(currentProduct);
+  } catch (err) {
+    console.error("[product] load error:", err);
+    ensureDetailContainer().innerHTML =
+      `<p style="color:#900">Sorry, we could not load this product.</p>`;
   }
 }
 
-// Kick things off
-renderProduct();
+attachGlobalClickHandler();
+init();
