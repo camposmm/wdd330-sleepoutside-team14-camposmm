@@ -20,6 +20,8 @@
         <!-- =======================
              Checkout Form
         ======================== -->
+        <!-- NOTE: keep novalidate if you are validating manually in JS. 
+             If you want built-in browser validation on submit, remove novalidate. -->
         <form id="checkout-form" novalidate>
           <fieldset>
             <legend>Customer Name</legend>
@@ -44,7 +46,17 @@
             <input id="state" name="state" type="text" required />
 
             <label for="zip">Zip Code</label>
-            <input id="zip" name="zip" type="text" pattern="\\d{5}" placeholder="12345" required />
+            <!-- FIX: patterns use single backslashes in HTML -->
+            <input
+              id="zip"
+              name="zip"
+              type="text"
+              inputmode="numeric"
+              pattern="\d{5}"
+              maxlength="5"
+              placeholder="12345"
+              required
+            />
             <small>Enter ZIP to calculate tax &amp; shipping.</small>
           </fieldset>
 
@@ -57,7 +69,8 @@
               name="cardNumber"
               type="text"
               inputmode="numeric"
-              pattern="\\d{16}"
+              pattern="\d{16}"
+              maxlength="16"
               placeholder="1234123412341234"
               required
             />
@@ -67,13 +80,22 @@
               id="expiration"
               name="expiration"
               type="text"
-              pattern="(0[1-9]|1[0-2])\\/\\d{2}"
+              pattern="(0[1-9]|1[0-2])/\d{2}"
               placeholder="08/27"
               required
             />
 
             <label for="code">Security Code</label>
-            <input id="code" name="code" type="text" inputmode="numeric" pattern="\\d{3}" placeholder="123" required />
+            <input
+              id="code"
+              name="code"
+              type="text"
+              inputmode="numeric"
+              pattern="\d{3}"
+              maxlength="3"
+              placeholder="123"
+              required
+            />
           </fieldset>
 
           <button type="submit" id="place-order">Place Order</button>

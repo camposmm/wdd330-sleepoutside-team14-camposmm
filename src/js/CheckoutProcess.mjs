@@ -1,115 +1,71 @@
 // src/js/CheckoutProcess.mjs
-// ------------------------------------------------------
-// Handles the "Order Summary" math + order submission.
-//  - Reads cart from localStorage
-//  - Computes item subtotal, tax, shipping, order total
-//  - Prepares the payload the backend expects
-//  - Submits the order to the /checkout endpoint
-//
-// Expects the following markup somewhere on the page
-// (usually in <aside id="summary"> ... ):
-//
-//   #summary
-//     #items-count
-//     #subtotal
-//     #tax
-//     #shipping
-//     #orderTotal
-//
-// Notes
-//  - Tax is a flat 6% of the item subtotal
-//  - Shipping is $10 for the first item + $2 for each additional
-//  - Cart item shape (as used elsewhere in this project):
-//      { Id, Name, Price, quantity, Image, Brand, ... }
-// ------------------------------------------------------
+// Checkout totals, validation, and order submission.
 
-import { getLocalStorage } from "./utils.mjs";
-
-// Base URL pulled from Vite env; must be prefixed with VITE_ in .env
-const BASE_URL = import.meta.env.VITE_SERVER_URL ?? "/";
-
-// Tiny helper: turn a <form> into a plain object where keys = input[name]
-function formDataToJSON(formElement) {
-  const formData = new FormData(formElement);
-  const out = {};
-  formData.forEach((value, key) => {
-    out[key] = value;
-  });
-  return out;
-}
+import ExternalServices from "./externalServices.mjs";
+import { getLocalStorage, setLocalStorage, qs, alertMessage } from "./utils.mjs";
 
 export default class CheckoutProcess {
-  /**
-   * @param {string} key            LocalStorage key for cart (e.g., "so-cart")
-   * @param {string} outputSelector CSS selector for the summary container (e.g., "#summary")
-   */
   constructor(key, outputSelector) {
     this.key = key;
     this.outputSelector = outputSelector;
 
-    // internal state
     this.list = [];
+    this.itemsCount = 0;
     this.itemTotal = 0;
-    this.shipping = 0;
     this.tax = 0;
+    this.shipping = 0;
     this.orderTotal = 0;
+
+    this.services = new ExternalServices();
   }
 
-  /** Load cart, compute item subtotal immediately. */
+  // ---------- lifecycle ----------
   init() {
-    this.list = getLocalStorage(this.key) ?? [];
-    this.calculateItemSubTotal();
+    this.list = getLocalStorage(this.key) || [];
+    this.calculateItemSubTotal();   // items + subtotal
+    this.calculateOrderTotal();     // <-- ensure tax & shipping appear on load
   }
 
-  // ----------------------------------------------------
-  // Calculations
-  // ----------------------------------------------------
+  // ---------- helpers ----------
+  lineTotal(item) {
+    const price = Number(item?.Price ?? item?.price ?? 0);
+    const qty = Number(item?.quantity ?? 1);
+    const n = price * qty;
+    return Number.isFinite(n) ? n : 0;
+  }
 
-  /** Calculate and display the item subtotal + item count. */
+  // ---------- summaries ----------
   calculateItemSubTotal() {
-    const items = this.list ?? [];
+    const items = Array.isArray(this.list) ? this.list : [];
+    this.itemsCount = items.reduce((sum, i) => sum + Number(i?.quantity ?? 1), 0);
+    this.itemTotal = items.reduce((sum, i) => sum + this.lineTotal(i), 0);
 
-    // sum of (price * qty)
-    this.itemTotal = items.reduce((sum, i) => {
-      const price = Number(i?.Price ?? 0);
-      const qty = Number(i?.quantity ?? 1);
-      return sum + (isNaN(price * qty) ? 0 : price * qty);
-    }, 0);
-
-    // number of items (sum of quantities)
-    const itemCount = items.reduce((n, i) => n + Number(i?.quantity ?? 1), 0);
-
-    // write to DOM
-    const root = document.querySelector(this.outputSelector);
-    if (!root) return;
-
-    const itemsCountEl = root.querySelector("#items-count");
-    const subtotalEl = root.querySelector("#subtotal");
-
-    if (itemsCountEl) itemsCountEl.textContent = itemCount;
-    if (subtotalEl) subtotalEl.textContent = this.itemTotal.toFixed(2);
+    const root = qs(this.outputSelector);
+    if (root) {
+      const countEl = root.querySelector("#items-count");
+      const subtotalEl = root.querySelector("#subtotal");
+      if (countEl) countEl.textContent = String(this.itemsCount);
+      if (subtotalEl) subtotalEl.textContent = this.itemTotal.toFixed(2);
+    }
   }
 
-  /** Calculate and display tax, shipping, and order total. */
   calculateOrderTotal() {
-    const items = this.list ?? [];
-    const itemCount = items.reduce((n, i) => n + Number(i?.quantity ?? 1), 0);
+    // Per assignment: flat formulas (not address-based)
+    this.tax = this.itemTotal * 0.06; // 6%
 
-    // 6% tax on the subtotal
-    this.tax = this.itemTotal * 0.06;
+    // $10 first item + $2 each additional. 0 if cart empty.
+    if (this.itemsCount <= 0) {
+      this.shipping = 0;
+    } else {
+      this.shipping = 10 + Math.max(0, this.itemsCount - 1) * 2;
+    }
 
-    // $10 for the first item + $2 for each additional (0 when no items)
-    this.shipping = itemCount > 0 ? 10 + Math.max(0, itemCount - 1) * 2 : 0;
-
-    // grand total
     this.orderTotal = this.itemTotal + this.tax + this.shipping;
-
     this.displayOrderTotals();
   }
 
-  /** Push the calculated numbers into the DOM. */
   displayOrderTotals() {
-    const root = document.querySelector(this.outputSelector);
+    const root = qs(this.outputSelector);
     if (!root) return;
 
     const taxEl = root.querySelector("#tax");
@@ -121,53 +77,74 @@ export default class CheckoutProcess {
     if (totalEl) totalEl.textContent = this.orderTotal.toFixed(2);
   }
 
-  // ----------------------------------------------------
-  // Order packaging + submission
-  // ----------------------------------------------------
-
-  /**
-   * Convert the cart items to the simplified array the backend expects.
-   * Output shape for each item:
-   *   { id, name, price, quantity }
-   */
-  packageItems(items = []) {
-    return items.map((p) => ({
-      id: String(p?.Id ?? ""),
-      name: String(p?.Name ?? ""),
-      price: Number(p?.Price ?? 0),
+  // ---------- data packaging ----------
+  packageItems(items) {
+    return (items || []).map((p) => ({
+      id: String(p?.Id ?? p?.id ?? ""),
+      name: p?.Name ?? p?.name ?? "",
+      price: Number(p?.Price ?? p?.price ?? 0),
       quantity: Number(p?.quantity ?? 1),
     }));
   }
 
-  /**
-   * Build the order object from form + summary and POST it to /checkout.
-   * Returns the parsed JSON response from the server.
-   * @param {HTMLFormElement} formEl
-   */
+  formDataToJSON(formElement) {
+    const formData = new FormData(formElement);
+    const out = {};
+    formData.forEach((value, key) => (out[key] = value));
+    return out;
+  }
+
+  // ---------- submit ----------
   async checkout(formEl) {
-    // Convert form inputs (names MUST match backend keys)
-    const order = formDataToJSON(formEl);
-
-    // Add server-required fields
-    order.orderDate = new Date().toISOString();
-    order.items = this.packageItems(this.list);
-    order.orderTotal = this.orderTotal.toFixed(2);
-    order.shipping = this.shipping;
-    order.tax = this.tax.toFixed(2);
-
-    // Endpoint: <BASE_URL>/checkout
-    const url = `${BASE_URL}checkout`;
-    const options = {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(order),
-    };
-
-    const res = await fetch(url, options);
-    if (!res.ok) {
-      const msg = await res.text().catch(() => "");
-      throw new Error(`Checkout failed: ${res.status} ${res.statusText}${msg ? ` — ${msg}` : ""}`);
+    // make sure browser validation runs
+    if (!formEl.checkValidity()) {
+      formEl.reportValidity();
+      return;
     }
-    return res.json();
+
+    // totals should never be stale
+    this.calculateItemSubTotal();
+    this.calculateOrderTotal();
+
+    try {
+      const base = this.formDataToJSON(formEl);
+
+      const order = {
+        orderDate: new Date().toISOString(),
+        fname: base.fname,
+        lname: base.lname,
+        street: base.street,
+        city: base.city,
+        state: base.state,
+        zip: base.zip,
+        cardNumber: base.cardNumber,
+        expiration: base.expiration,
+        code: base.code,
+        items: this.packageItems(this.list),
+        orderTotal: this.orderTotal.toFixed(2),
+        shipping: this.shipping,
+        tax: this.tax.toFixed(2),
+      };
+
+      const result = await this.services.checkout(order);
+      setLocalStorage(this.key, []);           // clear cart
+      window.location.assign("/checkout/success.html");
+      return result;
+    } catch (err) {
+      console.error("[Checkout] failed:", err);
+      document.querySelectorAll(".alert").forEach((n) => n.remove());
+
+      const payload = err?.message ?? err ?? "Bad Request";
+      if (Array.isArray(payload?.errors)) {
+        payload.errors.forEach((m) => alertMessage(String(m), true));
+        return;
+      }
+      if (payload && typeof payload === "object") {
+        const msg = payload.message || payload.error || JSON.stringify(payload).slice(0, 300);
+        alertMessage(String(msg), true);
+        return;
+      }
+      alertMessage(String(payload), true);
+    }
   }
 }

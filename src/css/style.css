@@ -462,3 +462,25 @@ a[href$="/checkout/index.html"]:active {
     width: 100%;
   }
 }
+/* --- lightweight alert banner for checkout errors --- */
+.alert {
+  background: #f0a868;         /* matches your palette */
+  color: #111;
+  border-left: 6px solid #8a470c;
+  padding: 0.75rem 2.5rem 0.75rem 1rem;
+  margin: 0.75rem 0 1rem;
+  position: relative;
+  border-radius: 6px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.1);
+}
+
+.alert__close {
+  position: absolute;
+  right: 0.4rem;
+  top: 0.2rem;
+  border: 0;
+  background: transparent;
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+}
